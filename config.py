@@ -6,5 +6,5 @@ cfg = {'model_cfg':{"shared_input_dim":13,
                 "res_y_dims":9,
                 "thk_y_dims":31,},
        'batch_size':64,
-       'epochs':5,
+       'epochs':20,
        'lr':0.001,}

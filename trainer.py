@@ -35,7 +35,7 @@ class Trainer:
     
     def run(self):
         num_epochs = self.cfg['epochs']
-        epoch_val_loss, epoch_val_loss = 0, 0
+        epoch_train_loss, epoch_val_loss = 0, 0
         train_losses = []
         val_losses = []
         train_r2_scores_list = {'flatten': [], 'res': [], 'thk': []}
@@ -238,47 +238,59 @@ class Trainer:
     
     def plot_curve(self, train_r2_scores_list, val_r2_scores_list, train_losses, val_losses):
         num_epochs = self.cfg['epochs']
-     
+        epochs = range(1, num_epochs + 1)
+        
         fig, axs = plt.subplots(2, 3, figsize=(18, 12))
-
+        
         # Flatten 공정 R2 스코어
-        axs[0, 0].plot(range(1, num_epochs + 1), [train_r2_scores_list['flatten'][i] for i in range(num_epochs)], label='Train R2 Flatten')
-        axs[0, 0].plot(range(1, num_epochs + 1), [val_r2_scores_list['flatten'][i] for i in range(num_epochs)], label='Val R2 Flatten')
+        axs[0, 0].plot(epochs, train_r2_scores_list['flatten'], label='Train R2 Flatten')
+        # 검증 R2 스코어 중 NaN이 아닌 값만 산점도로 표시
+        val_epochs_flatten = [epoch for epoch, val in zip(epochs, val_r2_scores_list['flatten']) if not np.isnan(val)]
+        val_r2_flatten = [val for val in val_r2_scores_list['flatten'] if not np.isnan(val)]
+        axs[0, 0].scatter(val_epochs_flatten, val_r2_flatten, label='Val R2 Flatten', color='orange')
         axs[0, 0].set_title('Flatten R2 Score')
         axs[0, 0].set_xlabel('Epoch')
         axs[0, 0].set_ylabel('R2 Score')
         axs[0, 0].legend()
-
+        
         # Res 공정 R2 스코어
-        axs[0, 1].plot(range(1, num_epochs + 1), [train_r2_scores_list['res'][i] for i in range(num_epochs)], label='Train R2 Res')
-        axs[0, 1].plot(range(1, num_epochs + 1), [val_r2_scores_list['res'][i] for i in range(num_epochs)], label='Val R2 Res')
+        axs[0, 1].plot(epochs, train_r2_scores_list['res'], label='Train R2 Res')
+        val_epochs_res = [epoch for epoch, val in zip(epochs, val_r2_scores_list['res']) if not np.isnan(val)]
+        val_r2_res = [val for val in val_r2_scores_list['res'] if not np.isnan(val)]
+        axs[0, 1].scatter(val_epochs_res, val_r2_res, label='Val R2 Res', color='orange')
         axs[0, 1].set_title('Res R2 Score')
         axs[0, 1].set_xlabel('Epoch')
         axs[0, 1].set_ylabel('R2 Score')
         axs[0, 1].legend()
-
+        
         # Thk 공정 R2 스코어
-        axs[0, 2].plot(range(1, num_epochs + 1), [train_r2_scores_list['thk'][i] for i in range(num_epochs)], label='Train R2 Thk')
-        axs[0, 2].plot(range(1, num_epochs + 1), [val_r2_scores_list['thk'][i] for i in range(num_epochs)], label='Val R2 Thk')
+        axs[0, 2].plot(epochs, train_r2_scores_list['thk'], label='Train R2 Thk')
+        val_epochs_thk = [epoch for epoch, val in zip(epochs, val_r2_scores_list['thk']) if not np.isnan(val)]
+        val_r2_thk = [val for val in val_r2_scores_list['thk'] if not np.isnan(val)]
+        axs[0, 2].scatter(val_epochs_thk, val_r2_thk, label='Val R2 Thk', color='orange')
         axs[0, 2].set_title('Thk R2 Score')
         axs[0, 2].set_xlabel('Epoch')
         axs[0, 2].set_ylabel('R2 Score')
         axs[0, 2].legend()
-
-        # 기존의 손실 그래프는 아래에 배치
+        
         # Training Loss
-        axs[1, 0].plot(range(1, num_epochs + 1), train_losses, label='Train Loss')
+        axs[1, 0].plot(epochs, train_losses, label='Train Loss')
         axs[1, 0].set_title('Training Loss')
         axs[1, 0].set_xlabel('Epoch')
         axs[1, 0].set_ylabel('Loss')
         axs[1, 0].legend()
-
-        # Validation Loss
-        axs[1, 1].plot(range(1, num_epochs + 1), val_losses, label='Validation Loss')
+        
+        # Validation Loss: Scatter Plot
+        valid_epochs = [epoch for epoch in epochs if epoch % 5 == 0]
+        valid_losses_filtered = [val_losses[epoch-1] for epoch in valid_epochs]
+        axs[1, 1].scatter(valid_epochs, valid_losses_filtered, label='Validation Loss', color='orange')
         axs[1, 1].set_title('Validation Loss')
         axs[1, 1].set_xlabel('Epoch')
         axs[1, 1].set_ylabel('Loss')
         axs[1, 1].legend()
-
+        
+        # 세 번째 서브플롯 비활성화 (필요 시 다른 정보 추가 가능)
+        axs[1, 2].axis('off')  # 사용하지 않는 서브플롯 비활성화
+        
         plt.tight_layout()
         plt.savefig(f'{self.save_dir}/training_plots_per_process.png')
