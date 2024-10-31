@@ -1,6 +1,124 @@
 import torch
 import torch.nn as nn
-from model.sub_model import PeriodicEmbeddings
+import torch.nn.functional as F
+from model.sub_model import PeriodicEmbeddings, PositionalEncoding
+
+class APCforemr(nn.Module):
+    def __init__(self, shared_input_dim, flatten_input_dim, res_input_dim, thk_input_dim, 
+                 flatten_y_dims, res_y_dims, thk_y_dims, 
+                 embedding_dim=32):
+        super(APCforemr, self).__init__()
+        total_dim = shared_input_dim + (flatten_input_dim+5) + thk_input_dim
+        # 공유 X를 처리하는 레이어
+        self.shared_layer = PeriodicEmbeddings(n_features=shared_input_dim, 
+                                               d_embedding=embedding_dim, lite=False)
+
+        # Flatten 공정의 레이어
+        self.flatten_layer = PeriodicEmbeddings(n_features=flatten_input_dim+5, 
+                                                d_embedding=embedding_dim, lite=False)
+
+        # Res and Thk 공정의 레이어
+        self.thk_and_res_layer = PeriodicEmbeddings(n_features=thk_input_dim, 
+                                                    d_embedding=embedding_dim, 
+                                                    lite=False)
+            
+
+        nhead = max(1, embedding_dim // 16) 
+        # self.backborn = nn.Sequential(nn.TransformerEncoder(
+        #     nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=nhead, 
+        #                                dim_feedforward=embedding_dim*2, 
+        #                                dropout=0.1,batch_first=True,
+        #                                activation='gelu'),
+        #     num_layers=3),
+        # nn.Flatten(),
+        # )
+        encoder_layer = PreLNTransformerEncoderLayer(d_model=embedding_dim, nhead=nhead, 
+                                                     dim_feedforward=embedding_dim*4, 
+                                                     dropout=0.2, activation='relu')
+        self.backborn = PreLNTransformerEncoder(encoder_layer, num_layers=3)
+        
+        # 각 공정의 최종 출력 헤드 (Flatten, Res, Thk)
+        self.flatten_head = nn.Linear(embedding_dim, flatten_y_dims)
+        self.res_head = nn.Linear(embedding_dim, res_y_dims)
+        self.thk_head = nn.Linear(embedding_dim, thk_y_dims)
+
+    def forward(self, sample_batch):
+        
+        shared_X = torch.cat((sample_batch['share_control'], sample_batch['share_not_control']), dim=1)
+        thk_and_res_X = torch.cat((sample_batch['thk_control'], 
+                                   sample_batch['thk_not_control']), dim=1)
+        
+        flatten_X = sample_batch['flatten_not_control']
+        flatten_pred_y = torch.nan_to_num(sample_batch['target_flatten_before'], nan=-1)
+        flatten_X_and_before = torch.cat((flatten_X, flatten_pred_y), dim=1)
+        
+        # Embedding
+        shared_out = self.shared_layer(shared_X)
+        flatten_out = self.flatten_layer(flatten_X_and_before)
+        thk_and_res_out = self.thk_and_res_layer(thk_and_res_X)
+
+        embedding_x = torch.cat((shared_out, flatten_out, thk_and_res_out), dim=1)
+
+        # embedding_x = embedding_x.permute(1, 0, 2)  # (3F, B, E)
+
+        # # 포지셔널 인코딩 추가
+        # embedding_x = self.pos_encoder(embedding_x)
+        # 각 공정의 독립 X와 공유 결과를 결합하여 처리
+        out = self.backborn(embedding_x.transpose(0, 1))
+        out = out.mean(dim=0)
+        flatten_result = self.flatten_head(out)
+        thk_result = self.thk_head(out)
+        res_result = self.res_head(out)
+
+        return {
+            'flatten': flatten_result,
+            'res': res_result,
+            'thk': thk_result
+        }
+
+class PreLNTransformerEncoderLayer(nn.Module):
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation='relu'):
+        super(PreLNTransformerEncoderLayer, self).__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+        
+        # Feedforward 네트워크
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        
+        # 레이어 정규화
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        
+        # 활성화 함수
+        self.activation = F.relu if activation == 'relu' else F.gelu
+
+    def forward(self, src, src_mask=None, src_key_padding_mask=None):
+        # 서브 레이어 전에 LayerNorm 적용
+        src2 = self.norm1(src)
+        attn_output, _ = self.self_attn(src2, src2, src2, attn_mask=src_mask,
+                                        key_padding_mask=src_key_padding_mask)
+        src = src + self.dropout(attn_output)
+        
+        # 서브 레이어 전에 LayerNorm 적용
+        src2 = self.norm2(src)
+        ff_output = self.linear2(self.dropout(self.activation(self.linear1(src2))))
+        src = src + self.dropout(ff_output)
+        return src
+
+class PreLNTransformerEncoder(nn.Module):
+    def __init__(self, encoder_layer, num_layers):
+        super(PreLNTransformerEncoder, self).__init__()
+        self.layers = nn.ModuleList([encoder_layer for _ in range(num_layers)])
+        self.num_layers = num_layers
+
+    def forward(self, src, mask=None, src_key_padding_mask=None):
+        output = src
+        for layer in self.layers:
+            output = layer(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+        return output
+
+
 
 class APCMLP(nn.Module):
     def __init__(self, shared_input_dim, flatten_input_dim, res_input_dim, thk_input_dim, 
@@ -18,9 +136,9 @@ class APCMLP(nn.Module):
 
         # Flatten 공정의 레이어
         self.flatten_layer = nn.Sequential(
-            PeriodicEmbeddings(n_features=flatten_input_dim, d_embedding=embedding_dim, lite=False),
+            PeriodicEmbeddings(n_features=(flatten_input_dim+5), d_embedding=embedding_dim, lite=False),
             nn.Flatten(),
-            nn.Linear(embedding_dim*flatten_input_dim, embedding_dim),
+            nn.Linear(embedding_dim*(flatten_input_dim+5), embedding_dim),
             nn.LeakyReLU(negative_slope=0.01)
         )
 
@@ -45,12 +163,19 @@ class APCMLP(nn.Module):
         self.res_head = nn.Linear(embedding_dim*2, res_y_dims)
         self.thk_head = nn.Linear(embedding_dim*2, thk_y_dims)
 
-    def forward(self, shared_X, flatten_X, thk_and_res_X):
+    def forward(self, sample_batch):
+        
+        shared_X = torch.cat((sample_batch['share_control'], sample_batch['share_not_control']), dim=1)
+        thk_and_res_X = torch.cat((sample_batch['thk_control'], sample_batch['thk_not_control']), dim=1)
+        
+        flatten_X = sample_batch['flatten_not_control']
+        flatten_pred_y = torch.nan_to_num(sample_batch['target_flatten_before'], nan=-1)
+        flatten_X_and_before = torch.cat((flatten_X, flatten_pred_y), dim=1)
         # 공유 X를 처리
         shared_out = self.shared_layer(shared_X)
 
         # 각 공정의 독립 X와 공유 결과를 결합하여 처리
-        flatten_out = self.flatten_layer(flatten_X)
+        flatten_out = self.flatten_layer(flatten_X_and_before)
         flatten_input = torch.cat((shared_out, flatten_out), dim=1)
         flatten_result = self.flatten_head(flatten_input)
 

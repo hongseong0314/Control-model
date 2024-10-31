@@ -152,3 +152,23 @@ class PeriodicEmbeddings(nn.Module):
         if self.activation is not None:
             x = self.activation(x)
         return x
+    
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        
+        # 포지셔널 인코딩을 미리 계산하여 버퍼에 저장
+        pe = torch.zeros(max_len, d_model)  # (max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)  # (max_len, 1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))  # (d_model/2,)
+        pe[:, 0::2] = torch.sin(position * div_term)  # 짝수 인덱스
+        pe[:, 1::2] = torch.cos(position * div_term)  # 홀수 인덱스
+        pe = pe.unsqueeze(1)  # (max_len, 1, d_model)
+        self.register_buffer('pe', pe)  # 학습 파라미터가 아닌 버퍼로 등록
+    
+    def forward(self, x):
+        """
+        x: (S, B, E)
+        """
+        x = x + self.pe[:x.size(0), :]  # 시퀀스 길이만큼 포지셔널 인코딩 추가
+        return x

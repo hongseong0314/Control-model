@@ -7,4 +7,8 @@ cfg = {'model_cfg':{"shared_input_dim":13,
                 "thk_y_dims":31,},
        'batch_size':64,
        'epochs':20,
-       'lr':0.001,}
+       'lr':0.001,
+       'use_weights':True,
+       'use_cuda':True,
+       'cuda_device_num':0,
+       }

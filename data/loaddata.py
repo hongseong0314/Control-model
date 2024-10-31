@@ -35,7 +35,4 @@ def make_dataloader(root_path):
     print(f"Validation Set Size: {valid_set.shape}")
     print(f"Test Set Size: {test_set.shape}")
 
-    trainset = APCDataset(raw_df=train_set,)
-    validset = APCDataset(raw_df=valid_set,)
-    testset = APCDataset(raw_df=test_set,)
-    return  trainset, validset, testset
+    return  train_set, valid_set, test_set

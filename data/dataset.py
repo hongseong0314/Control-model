@@ -27,7 +27,8 @@ all_thk_cols = [f'THK_y_factor_{i}' for i in range(1, 32)]
 class APCDataset(Dataset):
     ## share
     
-    def __init__(self, raw_df, nan_replace=-1):
+    def __init__(self, raw_df, device, nan_replace=-1):
+        self.device = device
         df = copy.deepcopy(raw_df)
         df[share_control_col + share_not_control_col + \
                 flatten_not_control_col+\
@@ -59,19 +60,19 @@ class APCDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            'share_control': torch.tensor(self.share_control[idx], dtype=torch.float32),
-            'share_not_control': torch.tensor(self.share_not_control[idx], dtype=torch.float32),
-            'flatten_not_control': torch.tensor(self.flatten_not_control[idx], dtype=torch.float32),
-            'thk_control': torch.tensor(self.thk_control[idx], dtype=torch.float32),
-            'thk_not_control': torch.tensor(self.thk_not_control[idx], dtype=torch.float32),
+            'share_control': torch.tensor(self.share_control[idx], dtype=torch.float32).to(self.device),
+            'share_not_control': torch.tensor(self.share_not_control[idx], dtype=torch.float32).to(self.device),
+            'flatten_not_control': torch.tensor(self.flatten_not_control[idx], dtype=torch.float32).to(self.device),
+            'thk_control': torch.tensor(self.thk_control[idx], dtype=torch.float32).to(self.device),
+            'thk_not_control': torch.tensor(self.thk_not_control[idx], dtype=torch.float32).to(self.device),
 
-            'target_flatten_before': torch.tensor(self.target_flatten_before[idx], dtype=torch.float32),
-            'target_flatten_after': torch.tensor(self.target_flatten_after[idx], dtype=torch.float32),
-            'target_res': torch.tensor(self.target_res[idx], dtype=torch.float32),
-            'target_thk': torch.tensor(self.target_thk[idx], dtype=torch.float32),
+            'target_flatten_before': torch.tensor(self.target_flatten_before[idx], dtype=torch.float32).to(self.device),
+            'target_flatten_after': torch.tensor(self.target_flatten_after[idx], dtype=torch.float32).to(self.device),
+            'target_res': torch.tensor(self.target_res[idx], dtype=torch.float32).to(self.device),
+            'target_thk': torch.tensor(self.target_thk[idx], dtype=torch.float32).to(self.device),
 
-            'mask_flatten_before': torch.tensor(self.mask_flatten_before[idx], dtype=torch.float32),
-            'mask_flatten_after': torch.tensor(self.mask_flatten_after[idx], dtype=torch.float32),
-            'mask_res': torch.tensor(self.mask_res[idx], dtype=torch.float32),
-            'mask_thk': torch.tensor(self.mask_thk[idx], dtype=torch.float32),
+            'mask_flatten_before': torch.tensor(self.mask_flatten_before[idx], dtype=torch.float32).to(self.device),
+            'mask_flatten_after': torch.tensor(self.mask_flatten_after[idx], dtype=torch.float32).to(self.device),
+            'mask_res': torch.tensor(self.mask_res[idx], dtype=torch.float32).to(self.device),
+            'mask_thk': torch.tensor(self.mask_thk[idx], dtype=torch.float32).to(self.device),
         }
