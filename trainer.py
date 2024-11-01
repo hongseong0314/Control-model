@@ -21,10 +21,11 @@ class Trainer:
             cuda_device_num = self.cfg['cuda_device_num']
             torch.cuda.set_device(cuda_device_num)
             self.device = torch.device('cuda', cuda_device_num)
-            torch.set_default_tensor_type('torch.cuda.FloatTensor')
+            # torch.set_default_tensor_type('torch.cuda.FloatTensor')
+            # torch.set_default_dtype('torch.cuda.FloatTensor')
         else:
             self.device = torch.device('cpu')
-            torch.set_default_tensor_type('torch.FloatTensor')
+            # torch.set_default_tensor_type('torch.FloatTensor')
 
         if cfg['use_weights']:
             self.num_flatten = 600000
@@ -54,13 +55,16 @@ class Trainer:
         testset = APCDataset(raw_df=self.cfg['test_set'],device=self.device)
         self.train_loader = DataLoader(trainset, 
                                        batch_size=self.cfg['batch_size'], shuffle=True,
-                                       generator=torch.Generator(device=self.device))
+                                    #    generator=torch.Generator(device=self.device)
+                                       )
         self.valid_loader = DataLoader(validset, 
                                        batch_size=self.cfg['batch_size'], shuffle=False,
-                                       generator=torch.Generator(device=self.device))
+                                    #    generator=torch.Generator(device=self.device)
+                                       )
         self.test_loader = DataLoader(testset, 
                                       batch_size=self.cfg['batch_size'], shuffle=False,
-                                      generator=torch.Generator(device=self.device))
+                                    #   generator=torch.Generator(device=self.device)
+                                      )
 
         now = datetime.now()
         dir_name = now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -104,6 +108,7 @@ class Trainer:
         for sample_batch in self.train_loader:
             self.optimizer.zero_grad()
             # Forward pass
+            sample_batch = {k: v.to(self.device) for k, v in sample_batch.items()}
             outputs = self.VM_model(sample_batch)
 
             # Masked Loss 계산 (Flatten, Res, Thk 공정별로 계산 후 합산)
@@ -161,6 +166,7 @@ class Trainer:
         y_preds = {'flatten': [], 'res': [], 'thk': []}
         with torch.no_grad():
             for sample_batch in self.valid_loader:
+                sample_batch = {k: v.to(self.device) for k, v in sample_batch.items()}
                 outputs = self.VM_model(sample_batch)
 
                 loss_flatten = torch.nan_to_num(self.criterion(outputs['flatten'], sample_batch['target_flatten_after']), nan=0.0)
