@@ -29,8 +29,8 @@ class Trainer:
 
         if cfg['use_weights']:
             self.num_flatten = 600000
-            self.num_res = 60000
-            self.num_thk = 40000
+            self.num_res = 40000
+            self.num_thk = 60000
 
             inv_flatten = 1.0 / self.num_flatten
             inv_res = 1.0 / self.num_res

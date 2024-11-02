@@ -38,7 +38,7 @@ class APCforemr(nn.Module):
         # )
         encoder_layer = PreLNTransformerEncoderLayer(d_model=embedding_dim, nhead=nhead, 
                                                      dim_feedforward=embedding_dim*4, 
-                                                     dropout=0.2, activation='relu')
+                                                     dropout=0.1, activation='gelu')
         self.backborn = PreLNTransformerEncoder(encoder_layer, num_layers=3)
         
         # 각 공정의 최종 출력 헤드 (Flatten, Res, Thk)
@@ -49,7 +49,6 @@ class APCforemr(nn.Module):
         self.split_sizes = [shared_input_dim, flatten_input_dim + 5, thk_input_dim]
 
     def forward(self, sample_batch):
-        
         shared_X = torch.cat((sample_batch['share_control'], sample_batch['share_not_control']), dim=1)
         thk_and_res_X = torch.cat((sample_batch['thk_control'], 
                                    sample_batch['thk_not_control']), dim=1)
@@ -67,39 +66,27 @@ class APCforemr(nn.Module):
         B = shared_out.size(0)
 
         # 특수 토큰을 배치 크기에 맞게 복제
-        thk_token = self.thk_token.expand(B, 1, -1)       # (1, B, E)
-        flatten_token = self.flatten_token.expand(B, 1, -1) # (1, B, E)
-        res_token = self.res_token.expand(B, 1, -1)      # (1, B, E)
+        thk_token = self.thk_token.expand(B, 1, -1) # (B, 1, E)
+        flatten_token = self.flatten_token.expand(B, 1, -1) # (B, 1, E)
+        res_token = self.res_token.expand(B, 1, -1) # (B, 1, E)
 
         # embedding_x = torch.cat((shared_out, flatten_out, thk_and_res_out), dim=1)
-        embedding_x = torch.cat((thk_token, flatten_token, res_token, shared_out, flatten_out, thk_and_res_out), dim=1)  # (seq_len, B, E)
+        embedding_x = torch.cat((thk_token, flatten_token, res_token, shared_out, flatten_out, thk_and_res_out), dim=1)  # (B, cls token + 3F, E)
 
-        # embedding_x = embedding_x.permute(1, 0, 2)  # (3F, B, E)
+        embedding_x = embedding_x.permute(1, 0, 2)  # (token + 3F, B, E)
 
         # # 포지셔널 인코딩 추가
-        # embedding_x = self.pos_encoder(embedding_x)
-        # 각 공정의 독립 X와 공유 결과를 결합하여 처리
-        out = self.backborn(embedding_x.transpose(0, 1))
-        # out_split = torch.split(out, self.split_sizes, dim=0)  # tuple of 3 tensors, 각 (F_i, B, E)
-        
-        # # out_means = [part.mean(dim=0) for part in out_split]  # list of 3 tensors, each (B, E)
-        # flatten_out = torch.cat((out_means[0], out_means[1]), dim=1)
-        # res_and_thk_out = torch.cat((out_means[0], out_means[2]), dim=1)
-        # print(res_and_thk_out.shape)
-        # print(flatten_out.shape)
+        embedding_x = self.pos_encoder(embedding_x)
+        out = self.backborn(embedding_x)
+
         thk_output = out[0, :, :]        # (B, E)
         flatten_output = out[1, :, :]    # (B, E)
         res_output = out[2, :, :]        # (B, E)
 
         # 각 헤드에 전달하여 최종 출력 생성
-        flatten_result = self.flatten_head(flatten_output)  # (B, flatten_y_dims)
-        thk_result = self.thk_head(thk_output)      # (B, thk_y_dims)
+        flatten_result = self.flatten_head(flatten_output)  
+        thk_result = self.thk_head(thk_output)     
         res_result = self.res_head(res_output)  
-
-        # out = out.mean(dim=0)
-        # flatten_result = self.flatten_head(out)
-        # thk_result = self.thk_head(out)
-        # res_result = self.res_head(out)
 
         return {
             'flatten': flatten_result,
