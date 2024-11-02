@@ -85,6 +85,7 @@ class APCforemr(nn.Module):
             'thk': thk_result
         }
 
+
 class PreLNTransformerEncoderLayer(nn.Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation='relu'):
         super(PreLNTransformerEncoderLayer, self).__init__()
@@ -126,7 +127,6 @@ class PreLNTransformerEncoder(nn.Module):
         for layer in self.layers:
             output = layer(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
         return output
-
 
 
 class APCMLP(nn.Module):
