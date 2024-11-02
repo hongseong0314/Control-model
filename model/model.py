@@ -22,7 +22,11 @@ class APCforemr(nn.Module):
                                                     d_embedding=embedding_dim, 
                                                     lite=False)
             
-
+        # 학습 가능한 특수 토큰 임베딩 생성
+        self.thk_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))      # (1, 1, E)
+        self.flatten_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))  # (1, 1, E)
+        self.res_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))  
+        self.pos_encoder = PositionalEncoding(embedding_dim)
         nhead = max(1, embedding_dim // 16) 
         # self.backborn = nn.Sequential(nn.TransformerEncoder(
         #     nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=nhead, 
@@ -42,6 +46,8 @@ class APCforemr(nn.Module):
         self.res_head = nn.Linear(embedding_dim, res_y_dims)
         self.thk_head = nn.Linear(embedding_dim, thk_y_dims)
 
+        self.split_sizes = [shared_input_dim, flatten_input_dim + 5, thk_input_dim]
+
     def forward(self, sample_batch):
         
         shared_X = torch.cat((sample_batch['share_control'], sample_batch['share_not_control']), dim=1)
@@ -57,7 +63,16 @@ class APCforemr(nn.Module):
         flatten_out = self.flatten_layer(flatten_X_and_before)
         thk_and_res_out = self.thk_and_res_layer(thk_and_res_X)
 
-        embedding_x = torch.cat((shared_out, flatten_out, thk_and_res_out), dim=1)
+        # 배치 크기 가져오기
+        B = shared_out.size(0)
+
+        # 특수 토큰을 배치 크기에 맞게 복제
+        thk_token = self.thk_token.expand(B, 1, -1)       # (1, B, E)
+        flatten_token = self.flatten_token.expand(B, 1, -1) # (1, B, E)
+        res_token = self.res_token.expand(B, 1, -1)      # (1, B, E)
+
+        # embedding_x = torch.cat((shared_out, flatten_out, thk_and_res_out), dim=1)
+        embedding_x = torch.cat((thk_token, flatten_token, res_token, shared_out, flatten_out, thk_and_res_out), dim=1)  # (seq_len, B, E)
 
         # embedding_x = embedding_x.permute(1, 0, 2)  # (3F, B, E)
 
@@ -65,10 +80,26 @@ class APCforemr(nn.Module):
         # embedding_x = self.pos_encoder(embedding_x)
         # 각 공정의 독립 X와 공유 결과를 결합하여 처리
         out = self.backborn(embedding_x.transpose(0, 1))
-        out = out.mean(dim=0)
-        flatten_result = self.flatten_head(out)
-        thk_result = self.thk_head(out)
-        res_result = self.res_head(out)
+        # out_split = torch.split(out, self.split_sizes, dim=0)  # tuple of 3 tensors, 각 (F_i, B, E)
+        
+        # # out_means = [part.mean(dim=0) for part in out_split]  # list of 3 tensors, each (B, E)
+        # flatten_out = torch.cat((out_means[0], out_means[1]), dim=1)
+        # res_and_thk_out = torch.cat((out_means[0], out_means[2]), dim=1)
+        # print(res_and_thk_out.shape)
+        # print(flatten_out.shape)
+        thk_output = out[0, :, :]        # (B, E)
+        flatten_output = out[1, :, :]    # (B, E)
+        res_output = out[2, :, :]        # (B, E)
+
+        # 각 헤드에 전달하여 최종 출력 생성
+        flatten_result = self.flatten_head(flatten_output)  # (B, flatten_y_dims)
+        thk_result = self.thk_head(thk_output)      # (B, thk_y_dims)
+        res_result = self.res_head(res_output)  
+
+        # out = out.mean(dim=0)
+        # flatten_result = self.flatten_head(out)
+        # thk_result = self.thk_head(out)
+        # res_result = self.res_head(out)
 
         return {
             'flatten': flatten_result,
