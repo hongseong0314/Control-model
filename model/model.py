@@ -19,23 +19,15 @@ class APCforemr(nn.Module):
 
         # Res and Thk 공정의 레이어
         self.thk_and_res_layer = PeriodicEmbeddings(n_features=thk_input_dim, 
-                                                    d_embedding=embedding_dim, 
-                                                    lite=False)
+                                                    d_embedding=embedding_dim, lite=False)
             
         # 학습 가능한 특수 토큰 임베딩 생성
-        self.thk_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))      # (1, 1, E)
-        self.flatten_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))  # (1, 1, E)
+        self.thk_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))      
+        self.flatten_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))  
         self.res_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))  
         self.pos_encoder = PositionalEncoding(embedding_dim)
+
         nhead = max(1, embedding_dim // 16) 
-        # self.backborn = nn.Sequential(nn.TransformerEncoder(
-        #     nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=nhead, 
-        #                                dim_feedforward=embedding_dim*2, 
-        #                                dropout=0.1,batch_first=True,
-        #                                activation='gelu'),
-        #     num_layers=3),
-        # nn.Flatten(),
-        # )
         encoder_layer = PreLNTransformerEncoderLayer(d_model=embedding_dim, nhead=nhead, 
                                                      dim_feedforward=embedding_dim*4, 
                                                      dropout=0.1, activation='gelu')
@@ -72,8 +64,7 @@ class APCforemr(nn.Module):
 
         # embedding_x = torch.cat((shared_out, flatten_out, thk_and_res_out), dim=1)
         embedding_x = torch.cat((thk_token, flatten_token, res_token, shared_out, flatten_out, thk_and_res_out), dim=1)  # (B, cls token + 3F, E)
-
-        embedding_x = embedding_x.permute(1, 0, 2)  # (token + 3F, B, E)
+        embedding_x = embedding_x.permute(1, 0, 2)  # (3 token + 3F, B, E)
 
         # # 포지셔널 인코딩 추가
         embedding_x = self.pos_encoder(embedding_x)
